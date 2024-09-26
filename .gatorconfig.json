@@ -1,1 +1,1 @@
-{"current_user_name":"boots","db_url":"postgres://example"}
+{"current_user_name":"holgith","db_url":"postgres://kavun:@localhost:5432/gator?sslmode=disable"}

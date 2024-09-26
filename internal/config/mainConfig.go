@@ -21,23 +21,23 @@ func (con *Config) SetUpUser(username string) error {
 	return nil
 }
 
-func Read() (Config, error) {
+func Read() (*Config, error) {
 	configFilePath, err := getConfigFilePath()
 	if err != nil {
-		return Config{}, fmt.Errorf("could not find config file: %w", err)
+		return &Config{}, fmt.Errorf("could not find config file: %w", err)
 	}
 
 	data, err := os.ReadFile(configFilePath)
 	if err != nil {
-		return Config{}, fmt.Errorf("could not read config file: %w", err)
+		return &Config{}, fmt.Errorf("could not read config file: %w", err)
 	}
 
 	var config Config
 	if err := json.Unmarshal(data, &config); err != nil {
-		return Config{}, fmt.Errorf("could not unmarshal config file: %w", err)
+		return &Config{}, fmt.Errorf("could not unmarshal config file: %w", err)
 	}
 
-	return config, nil
+	return &config, nil
 }
 
 func write(config Config) error {

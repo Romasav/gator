@@ -1,12 +1,15 @@
 package main
 
 import (
+	"database/sql"
 	"errors"
-	"fmt"
 	"log"
 	"os"
 
 	"github.com/Romasav/gator/internal/config"
+	"github.com/Romasav/gator/internal/database"
+
+	_ "github.com/lib/pq"
 )
 
 func main() {
@@ -15,10 +18,19 @@ func main() {
 		log.Fatalf("could not get config: %v", err.Error())
 	}
 
-	state := newState(&con)
+	db, err := sql.Open("postgres", con.DbUrl)
+	if err != nil {
+		log.Fatalf("could not open a connection with db: %v", err.Error())
+	}
+	dbQueries := database.New(db)
+
+	state := newState(dbQueries, con)
 
 	commands := newCommands()
 	commands.register("login", handlerLogin)
+	commands.register("register", handlerRegister)
+	commands.register("reset", handlerReset)
+	commands.register("users", handlerUsers)
 
 	command, err := parseArgs()
 	if err != nil {
@@ -29,8 +41,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not run the command: %v", err.Error())
 	}
-
-	fmt.Print(con)
 }
 
 func parseArgs() (command, error) {
