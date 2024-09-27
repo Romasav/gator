@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Romasav/gator/internal/database"
+	"github.com/Romasav/gator/rssFeed"
 	"github.com/google/uuid"
 )
 
@@ -134,6 +135,84 @@ func handlerUsers(s *state, cmd command) error {
 			fmt.Print(" (current)")
 		}
 		fmt.Println()
+	}
+
+	return nil
+}
+
+func handlerAggregator(s *state, cmd command) error {
+	if len(cmd.Arguments) != 0 {
+		return fmt.Errorf("aggregator dosent require any arguments, found %v arguments", cmd.Arguments)
+	}
+
+	url := "https://www.wagslane.dev/index.xml"
+	rssFeed, err := rssFeed.FetchFeed(context.Background(), url)
+	if err != nil {
+		return fmt.Errorf("failed fetch feed: %w", err)
+	}
+
+	fmt.Println(rssFeed)
+
+	return nil
+}
+
+func handlerCreateFeed(s *state, cmd command) error {
+	if len(cmd.Arguments) != 2 {
+		return fmt.Errorf("create feed requires 2 arguments, found %v arguments", cmd.Arguments)
+	}
+	nameFeed := cmd.Arguments[0]
+	urlFeed := cmd.Arguments[1]
+
+	user, err := s.db.GetUser(context.Background(), s.config.Username)
+	if err != nil {
+		return fmt.Errorf("failed to get current user: %w", err)
+	}
+
+	createFeedParams := database.CreateFeedParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      nameFeed,
+		Url:       urlFeed,
+		UserID:    user.ID,
+	}
+
+	feed, err := s.db.CreateFeed(context.Background(), createFeedParams)
+	if err != nil {
+		return fmt.Errorf("failed to create a feed: %w", err)
+	}
+
+	fmt.Println("New Feed Record:")
+	fmt.Printf("ID:        %s\n", feed.ID.String())
+	fmt.Printf("Name:      %s\n", feed.Name)
+	fmt.Printf("URL:       %s\n", feed.Url)
+	fmt.Printf("User ID:   %s\n", feed.UserID.String())
+	fmt.Printf("CreatedAt: %s\n", feed.CreatedAt.Format(time.RFC3339))
+	fmt.Printf("UpdatedAt: %s\n", feed.UpdatedAt.Format(time.RFC3339))
+
+	return nil
+}
+
+func handlerFeeds(s *state, cmd command) error {
+	if len(cmd.Arguments) != 0 {
+		return fmt.Errorf("feeds dosent require any arguments, found %v arguments", cmd.Arguments)
+	}
+
+	feeds, err := s.db.GetFeeds(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to get feeds: %w", err)
+	}
+
+	for index, feed := range feeds {
+		user, err := s.db.GetUserById(context.Background(), feed.UserID)
+		if err != nil {
+			return fmt.Errorf("failed to get user by id: %w", err)
+		}
+
+		fmt.Printf("%v Feed Record:\n", index+1)
+		fmt.Printf("Name:      %s\n", feed.Name)
+		fmt.Printf("URL:       %s\n", feed.Url)
+		fmt.Printf("User Name: %s\n", user.Name)
 	}
 
 	return nil
