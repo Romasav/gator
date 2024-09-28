@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/Romasav/gator/internal/database"
@@ -103,19 +104,81 @@ func handlerUsers(s *state, cmd command) error {
 }
 
 func handlerAggregator(s *state, cmd command) error {
-	if len(cmd.Arguments) != 0 {
-		return fmt.Errorf("aggregator dosent require any arguments, found %v arguments", cmd.Arguments)
+	if len(cmd.Arguments) != 1 {
+		return fmt.Errorf("agg requires exactly 1 argument (time_between_reqs), found %v arguments", len(cmd.Arguments))
 	}
 
-	url := "https://www.wagslane.dev/index.xml"
-	rssFeed, err := rssFeed.FetchFeed(context.Background(), url)
+	timeBetweenRequests, err := time.ParseDuration(cmd.Arguments[0])
 	if err != nil {
-		return fmt.Errorf("failed fetch feed: %w", err)
+		return fmt.Errorf("failed to parse duration: %w", err)
 	}
 
-	fmt.Println(rssFeed)
+	fmt.Printf("Collecting feeds every %v\n", timeBetweenRequests)
 
+	ticker := time.NewTicker(timeBetweenRequests)
+
+	for {
+		scrapeFeeds(s)
+		<-ticker.C
+	}
+}
+
+func scrapeFeeds(s *state) error {
+	feed, err := s.db.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to get next feed: %w", err)
+	}
+
+	err = s.db.MarkFeedFetched(context.Background(), feed.ID)
+	if err != nil {
+		return fmt.Errorf("failed to mark feed as fetched: %w", err)
+	}
+
+	rssFeed, err := rssFeed.FetchFeed(context.Background(), feed.Url)
+	if err != nil {
+		return fmt.Errorf("failed to fetch feed: %w", err)
+	}
+
+	for _, item := range rssFeed.Channel.Items {
+		publishedAt, err := parsePublishedDate(item.PubDate)
+		if err != nil {
+			fmt.Println("Error parsing published date:", err)
+			continue
+		}
+
+		newPost := database.CreatePostParams{
+			ID:          uuid.New(),
+			CreatedAt:   time.Now(),
+			UpdatedAt:   time.Now(),
+			Title:       item.Title,
+			Url:         item.Link,
+			Description: sql.NullString{String: item.Description, Valid: item.Description != ""},
+			PublishedAt: sql.NullTime{Time: publishedAt, Valid: publishedAt != time.Time{}},
+			FeedID:      feed.ID,
+		}
+
+		_, err = s.db.CreatePost(context.Background(), newPost)
+		if err != nil {
+			if err != sql.ErrNoRows {
+				fmt.Println("Error saving post:", err)
+			}
+		}
+	}
 	return nil
+}
+
+func parsePublishedDate(pubDate string) (time.Time, error) {
+	formats := []string{
+		time.RFC1123Z,
+		time.RFC1123,
+		time.RFC3339,
+	}
+	for _, format := range formats {
+		if t, err := time.Parse(format, pubDate); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unsupported date format: %s", pubDate)
 }
 
 func handlerCreateFeed(s *state, cmd command, user database.User) error {
@@ -252,5 +315,32 @@ func handlerUnfollow(s *state, cmd command, user database.User) error {
 	}
 
 	fmt.Printf("Feed '%s' unfollowed successfully by user '%s'.\n", feedURL, user.Name)
+	return nil
+}
+
+func handlerBrowse(s *state, cmd command, user database.User) error {
+	limit := 2
+	if len(cmd.Arguments) > 0 {
+		var err error
+		limit, err = strconv.Atoi(cmd.Arguments[0])
+		if err != nil {
+			return fmt.Errorf("invalid limit: %s", cmd.Arguments[0])
+		}
+	}
+
+	getPostsParams := database.GetPostsForUserParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+	}
+
+	posts, err := s.db.GetPostsForUser(context.Background(), getPostsParams)
+	if err != nil {
+		return fmt.Errorf("failed to fetch posts: %w", err)
+	}
+
+	for _, post := range posts {
+		fmt.Printf("Title: %s\nURL: %s\nPublished: %v\n\n", post.Title, post.Url, post.PublishedAt)
+	}
+
 	return nil
 }
