@@ -32,10 +32,11 @@ func main() {
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
 	commands.register("agg", handlerAggregator)
-	commands.register("addfeed", handlerCreateFeed)
+	commands.register("addfeed", middlewareLoggedIn(handlerCreateFeed))
 	commands.register("feeds", handlerFeeds)
-	commands.register("follow", handlerFollow)
-	commands.register("following", handlerFollowing)
+	commands.register("follow", middlewareLoggedIn(handlerFollow))
+	commands.register("following", middlewareLoggedIn(handlerFollowing))
+	commands.register("unfollow", middlewareLoggedIn(handlerUnfollow))
 
 	command, err := parseArgs()
 	if err != nil {
