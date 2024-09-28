@@ -34,6 +34,8 @@ func main() {
 	commands.register("agg", handlerAggregator)
 	commands.register("addfeed", handlerCreateFeed)
 	commands.register("feeds", handlerFeeds)
+	commands.register("follow", handlerFollow)
+	commands.register("following", handlerFollowing)
 
 	command, err := parseArgs()
 	if err != nil {
